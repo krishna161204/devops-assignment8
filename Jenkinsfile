@@ -72,7 +72,7 @@ pipeline {
                     DESIRED=$(kubectl get deployment ${COLOR}-deployment \
                         -o jsonpath='{.spec.replicas}')
 
-                    if [ "$READY" != "$DESIRED" ]; then
+                    if [ "$READY" != "$DESIRED" ] || [ -z "$READY" ]; then
                         echo "ERROR: ${COLOR} deployment is not fully ready!"
                         exit 1
                     fi
@@ -87,11 +87,19 @@ pipeline {
                 sh '''
                     COLOR=$(echo "${DEPLOY_COLOR}" | tr '[:upper:]' '[:lower:]')
 
+                    cat > service-patch.yaml <<EOF
+spec:
+  selector:
+    app: assignment8
+    version: ${COLOR}
+EOF
+
                     kubectl patch service assignment8-service \
                         --type=merge \
-                        -p "{\"spec\":{\"selector\":{\"app\":\"assignment8\",\"version\":\"${COLOR}\"}}}"
+                        --patch-file=service-patch.yaml
 
-                    echo "Traffic switched to ${COLOR} environment."
+                    echo "Traffic successfully switched to ${COLOR}."
+                    rm -f service-patch.yaml
                 '''
             }
         }
@@ -99,10 +107,15 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 sh '''
+                    echo "Final deployment status:"
                     kubectl get deployments
                     kubectl get pods -l app=assignment8
                     kubectl get service assignment8-service
                     kubectl get endpoints assignment8-service
+
+                    echo "Active traffic selector:"
+                    kubectl get service assignment8-service \
+                        -o jsonpath='{.spec.selector}'
                 '''
             }
         }
